@@ -1,10 +1,12 @@
 import asyncio
+import re
 from typing import Optional, Dict, Any
 
 from app.bot.client import bot_client
 from app.llm.client import llm_client
 from app.llm.prompts import get_agent_system_prompt, format_observation
-from app.script.executor import script_executor
+from app.script.executor import script_executor, BotAPI
+from app.skills.manager import skill_manager
 from app.config import settings
 
 
@@ -20,6 +22,12 @@ class Agent:
         self.last_action_result: Optional[Dict[str, Any]] = None
         self._tick_task: Optional[asyncio.Task] = None
         self._pending_chat: list = []
+        
+        # 技能测试相关
+        self._current_test_task: Optional[asyncio.Task] = None
+        self._current_test_name: Optional[str] = None
+        self._test_cancelled: bool = False
+        self._skill_testing: bool = False  # 是否正在测试技能（暂停LLM）
     
     async def start(self):
         """Start the agent's decision loop"""
@@ -72,6 +80,10 @@ class Agent:
     async def tick(self):
         """Single decision-action cycle"""
         if not self.is_running:
+            return
+        
+        # 如果正在测试技能，跳过LLM决策
+        if self._skill_testing:
             return
         
         # 先检查Bot是否已连接
@@ -228,10 +240,251 @@ class Agent:
         event_type = event.get("type")
         
         if event_type == "chat":
+            message = event.get("message", "")
+            username = event.get("username", "")
+            
+            # 检查是否是测试指令
+            if message.startswith("%test "):
+                # 异步执行测试，不阻塞事件处理
+                asyncio.create_task(self._handle_test_command(message, username))
+                return
+            
+            # 检查是否是停止指令
+            if message.strip() == "%stop":
+                asyncio.create_task(self._handle_stop_command(username))
+                return
+            
+            # 检查是否是列出技能指令
+            if message.strip() == "%skills":
+                asyncio.create_task(self._handle_skills_command(username))
+                return
+            
+            # 检查是否是帮助指令
+            if message.strip() == "%help":
+                asyncio.create_task(self._handle_help_command(username))
+                return
+            
             # Store chat message for next tick
             self._pending_chat.append({
-                "username": event.get("username"),
-                "message": event.get("message")
+                "username": username,
+                "message": message
+            })
+    
+    async def _handle_test_command(self, message: str, username: str):
+        """
+        处理 %test 指令，直接测试技能
+        
+        格式: %test 技能名
+        或者: %test 技能名(参数1=值1, 参数2=值2)
+        """
+        # 检查是否有正在运行的测试
+        if self._current_test_task and not self._current_test_task.done():
+            await bot_client.execute_action("chat", {
+                "message": f"@{username} 已有技能'{self._current_test_name}'在运行喵~ 用 %stop 可以停止"
+            })
+            return
+        
+        try:
+            # 解析指令
+            command = message[6:].strip()  # 去掉 "%test "
+            
+            # 解析技能名和参数
+            match = re.match(r'^([^(]+)(?:\(([^)]*)\))?$', command)
+            if not match:
+                await bot_client.execute_action("chat", {
+                    "message": f"@{username} 格式错误喵~ 用法: %test 技能名 或 %test 技能名(参数=值)"
+                })
+                return
+            
+            skill_name = match.group(1).strip()
+            params_str = match.group(2)
+            
+            # 解析参数
+            kwargs = {}
+            if params_str:
+                # 解析 key=value 格式的参数
+                param_pairs = params_str.split(',')
+                for pair in param_pairs:
+                    if '=' in pair:
+                        key, value = pair.split('=', 1)
+                        key = key.strip()
+                        value = value.strip()
+                        # 尝试解析值类型
+                        try:
+                            # 尝试解析为数字
+                            if '.' in value:
+                                kwargs[key] = float(value)
+                            else:
+                                kwargs[key] = int(value)
+                        except ValueError:
+                            # 去掉引号
+                            if (value.startswith('"') and value.endswith('"')) or \
+                               (value.startswith("'") and value.endswith("'")):
+                                value = value[1:-1]
+                            kwargs[key] = value
+            
+            # 检查技能是否存在
+            skill = skill_manager.get_skill(skill_name)
+            if not skill:
+                skills = skill_manager.list_skills()
+                skill_names = [s['name'] for s in skills]
+                await bot_client.execute_action("chat", {
+                    "message": f"@{username} 技能'{skill_name}'不存在喵~ 可用技能: {', '.join(skill_names) or '无'}"
+                })
+                return
+            
+            # 重置取消标志
+            self._test_cancelled = False
+            self._current_test_name = skill_name
+            self._skill_testing = True  # 暂停LLM决策
+            
+            # 通知开始测试
+            await bot_client.execute_action("chat", {
+                "message": f"@{username} 开始测试技能'{skill_name}'喵~ (用 %stop 可停止，LLM已暂停)"
+            })
+            
+            print(f"[Agent] 测试技能: {skill_name}, 参数: {kwargs} (LLM已暂停)")
+            
+            # 创建测试任务
+            self._current_test_task = asyncio.create_task(
+                self._run_skill_test(skill_name, kwargs, username)
+            )
+            
+        except Exception as e:
+            import traceback
+            print(f"[Agent] 技能测试错误: {traceback.format_exc()}")
+            await bot_client.execute_action("chat", {
+                "message": f"@{username} 测试出错喵: {str(e)[:50]}"
+            })
+            self._current_test_task = None
+            self._current_test_name = None
+    
+    async def _run_skill_test(self, skill_name: str, kwargs: dict, username: str):
+        """运行技能测试（带超时和取消支持）"""
+        try:
+            # 创建 BotAPI 并执行技能
+            bot_api = BotAPI()
+            
+            # 使用 wait_for 添加超时（默认5分钟）
+            try:
+                result = await asyncio.wait_for(
+                    bot_api.useSkill(skill_name, **kwargs),
+                    timeout=300.0  # 5分钟超时
+                )
+            except asyncio.TimeoutError:
+                await bot_client.execute_action("chat", {
+                    "message": f"@{username} 技能'{skill_name}'执行超时(5分钟)喵~"
+                })
+                # 停止移动
+                await bot_client.execute_action("stopMoving", {})
+                return
+            except asyncio.CancelledError:
+                await bot_client.execute_action("chat", {
+                    "message": f"@{username} 技能'{skill_name}'已被停止喵~"
+                })
+                # 停止移动
+                await bot_client.execute_action("stopMoving", {})
+                return
+            
+            # 检查是否被取消
+            if self._test_cancelled:
+                return
+            
+            # 报告结果
+            if isinstance(result, dict):
+                success = result.get("success", True)
+                msg = result.get("message", str(result))
+                status = "成功" if success else "失败"
+            else:
+                status = "完成"
+                msg = str(result) if result else "无返回值"
+            
+            await bot_client.execute_action("chat", {
+                "message": f"@{username} 技能测试{status}: {msg[:100]}"
+            })
+            
+            print(f"[Agent] 技能测试结果: {result}")
+            
+        except asyncio.CancelledError:
+            # 被 %stop 取消
+            print(f"[Agent] 技能测试被取消: {skill_name}")
+            await bot_client.execute_action("stopMoving", {})
+        except Exception as e:
+            import traceback
+            print(f"[Agent] 技能测试错误: {traceback.format_exc()}")
+            await bot_client.execute_action("chat", {
+                "message": f"@{username} 测试出错喵: {str(e)[:50]}"
+            })
+        finally:
+            self._current_test_task = None
+            self._current_test_name = None
+            self._skill_testing = False  # 恢复LLM决策
+            print(f"[Agent] 技能测试结束，LLM已恢复")
+    
+    async def _handle_stop_command(self, username: str):
+        """处理 %stop 指令，停止当前技能测试"""
+        if not self._current_test_task or self._current_test_task.done():
+            await bot_client.execute_action("chat", {
+                "message": f"@{username} 没有正在运行的技能喵~"
+            })
+            return
+        
+        skill_name = self._current_test_name or "未知技能"
+        self._test_cancelled = True
+        self._skill_testing = False  # 恢复LLM决策
+        
+        # 取消任务
+        self._current_test_task.cancel()
+        
+        # 停止bot移动
+        try:
+            await bot_client.execute_action("stopMoving", {})
+        except:
+            pass
+        
+        print(f"[Agent] 停止技能测试: {skill_name}，LLM已恢复")
+        await bot_client.execute_action("chat", {
+            "message": f"@{username} 已停止技能'{skill_name}'喵~ LLM已恢复"
+        })
+    
+    async def _handle_help_command(self, username: str):
+        """处理 %help 指令，显示帮助信息"""
+        help_text = (
+            "可用指令: "
+            "%skills - 列出技能 | "
+            "%test 技能名 - 测试技能 | "
+            "%test 技能名(参数=值) - 带参数测试 | "
+            "%stop - 停止当前技能"
+        )
+        await bot_client.execute_action("chat", {
+            "message": f"@{username} {help_text}"
+        })
+    
+    async def _handle_skills_command(self, username: str):
+        """处理 %skills 指令，列出所有技能"""
+        try:
+            skills = skill_manager.list_skills()
+            
+            if not skills:
+                await bot_client.execute_action("chat", {
+                    "message": f"@{username} 还没有保存任何技能喵~"
+                })
+                return
+            
+            # 格式化技能列表
+            skill_list = []
+            for s in skills:
+                params = s.get('params', [])
+                param_str = f"({', '.join(params)})" if params else ""
+                skill_list.append(f"{s['name']}{param_str}")
+            
+            await bot_client.execute_action("chat", {
+                "message": f"@{username} 可用技能: {', '.join(skill_list)}"
+            })
+            
+        except Exception as e:
+            await bot_client.execute_action("chat", {
+                "message": f"@{username} 获取技能列表失败喵: {str(e)[:30]}"
             })
     
     def get_status(self) -> Dict[str, Any]:
@@ -240,7 +493,9 @@ class Agent:
             "is_running": self.is_running,
             "last_action": self.last_action,
             "last_action_result": self.last_action_result,
-            "pending_chat_count": len(self._pending_chat)
+            "pending_chat_count": len(self._pending_chat),
+            "skill_testing": self._skill_testing,
+            "current_test_skill": self._current_test_name
         }
 
 

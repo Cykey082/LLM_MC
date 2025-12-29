@@ -5,6 +5,7 @@ from typing import Optional, Dict, Any, List
 from app.agent.agent import agent
 from app.bot.client import bot_client
 from app.script.executor import script_executor
+from app.skills.manager import skill_manager
 
 
 router = APIRouter()
@@ -178,3 +179,146 @@ async def execute_script(request: ScriptRequest):
         return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Script execution error: {str(e)}")
+
+
+# ========== Skills Library Endpoints ==========
+
+class SkillCreateRequest(BaseModel):
+    """Request model for creating a skill"""
+    name: str
+    description: str
+    code: str
+    params: Optional[List[str]] = None
+
+
+class SkillResponse(BaseModel):
+    """Response model for skill operations"""
+    success: bool
+    message: Optional[str] = None
+    error: Optional[str] = None
+    skill: Optional[Dict[str, Any]] = None
+
+
+@router.get("/skills")
+async def list_skills():
+    """
+    列出所有已保存的技能
+    
+    Returns:
+        技能列表，每个技能包含 name, description, params
+    """
+    skills = skill_manager.list_skills()
+    return {
+        "success": True,
+        "count": len(skills),
+        "skills": skills
+    }
+
+
+@router.get("/skills/{name}")
+async def get_skill(name: str):
+    """
+    获取指定技能的详细信息（包含代码）
+    
+    Args:
+        name: 技能名称
+        
+    Returns:
+        技能详情，包含 name, description, params, full_code
+    """
+    skill = skill_manager.get_skill(name)
+    if not skill:
+        raise HTTPException(status_code=404, detail=f"Skill '{name}' not found")
+    
+    return {
+        "success": True,
+        "skill": skill
+    }
+
+
+@router.post("/skills", response_model=SkillResponse)
+async def create_skill(request: SkillCreateRequest):
+    """
+    创建新技能
+    
+    技能代码应该是函数体（不含 async def 声明），例如：
+    ```
+    wood = await bot.findBlock("oak_log", 32)
+    if wood.get("found"):
+        await bot.goTo(wood["x"], wood["y"], wood["z"])
+        await bot.collectBlock("oak_log")
+        return "采集成功"
+    return "没找到木头"
+    ```
+    """
+    result = skill_manager.save_skill(
+        name=request.name,
+        description=request.description,
+        code=request.code,
+        params=request.params or []
+    )
+    
+    if result.get("success"):
+        return SkillResponse(
+            success=True,
+            message=result.get("message"),
+            skill=result.get("skill")
+        )
+    else:
+        return SkillResponse(
+            success=False,
+            error=result.get("error")
+        )
+
+
+@router.delete("/skills/{name}")
+async def delete_skill(name: str):
+    """
+    删除指定技能
+    
+    Args:
+        name: 技能名称
+    """
+    result = skill_manager.delete_skill(name)
+    
+    if result.get("success"):
+        return {"success": True, "message": result.get("message")}
+    else:
+        raise HTTPException(status_code=404, detail=result.get("error"))
+
+
+@router.get("/skills/{name}/code")
+async def get_skill_code(name: str):
+    """
+    获取技能的可执行代码
+    
+    Args:
+        name: 技能名称
+        
+    Returns:
+        完整的技能函数代码
+    """
+    code = skill_manager.get_skill_code(name)
+    if not code:
+        raise HTTPException(status_code=404, detail=f"Skill '{name}' not found")
+    
+    return {
+        "success": True,
+        "name": name,
+        "code": code
+    }
+
+
+@router.get("/skills-description")
+async def get_skills_description():
+    """
+    获取所有技能的描述文本（用于 LLM 提示词）
+    
+    Returns:
+        格式化的技能描述文本
+    """
+    description = skill_manager.get_skills_description()
+    return {
+        "success": True,
+        "description": description
+    }

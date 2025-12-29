@@ -4,11 +4,12 @@ Allows LLM to write and execute Python code to perform complex actions
 """
 import asyncio
 import traceback
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 from io import StringIO
 import sys
 
 from app.bot.client import bot_client
+from app.skills.manager import skill_manager
 
 
 class BotAPI:
@@ -20,6 +21,7 @@ class BotAPI:
     def __init__(self):
         self.results = []  # 存储执行过程中的结果
         self.logs = []     # 存储日志
+        self._loaded_skills = {}  # 已加载的技能函数
     
     def log(self, message: str):
         """记录日志"""
@@ -118,6 +120,26 @@ class BotAPI:
         self.results.append({"action": "eat", "result": result})
         return result
     
+    async def useItem(self) -> Dict[str, Any]:
+        """使用当前手持物品（如使用弓箭、喝药水、使用末影珍珠等）"""
+        result = await bot_client.execute_action("useItem", {})
+        self.results.append({"action": "useItem", "result": result})
+        return result
+    
+    async def activateBlock(self, x: int, y: int, z: int) -> Dict[str, Any]:
+        """
+        右键激活/交互方块（如打开门、按按钮、拉拉杆、使用床等）
+        
+        Args:
+            x, y, z: 方块坐标
+            
+        Returns:
+            交互结果
+        """
+        result = await bot_client.execute_action("activateBlock", {"x": x, "y": y, "z": z})
+        self.results.append({"action": "activateBlock", "result": result})
+        return result
+    
     async def scanBlocks(self, blockTypes: list, range: int = 16) -> Dict[str, Any]:
         """扫描方块"""
         result = await bot_client.execute_action("scanBlocks", {
@@ -161,6 +183,156 @@ class BotAPI:
         self.results.append({"action": "getPathTo", "result": result})
         return result
     
+    # ===== 合成相关方法 =====
+    
+    async def craft(self, itemName: str, count: int = 1) -> Dict[str, Any]:
+        """
+        合成物品
+        
+        Args:
+            itemName: 要合成的物品名称（如 oak_planks, stick, crafting_table）
+            count: 合成数量（默认1）
+            
+        Returns:
+            合成结果
+        """
+        result = await bot_client.execute_action("craft", {
+            "itemName": itemName, "count": count
+        })
+        self.results.append({"action": "craft", "result": result})
+        return result
+    
+    async def listRecipes(self, itemName: str) -> Dict[str, Any]:
+        """
+        查看物品的合成配方
+        
+        Args:
+            itemName: 物品名称
+            
+        Returns:
+            配方列表
+        """
+        result = await bot_client.execute_action("listRecipes", {"itemName": itemName})
+        self.results.append({"action": "listRecipes", "result": result})
+        return result
+    
+    async def smelt(self, itemName: str, fuelName: str = None, count: int = 1) -> Dict[str, Any]:
+        """
+        使用熔炉烧制物品
+        
+        Args:
+            itemName: 要烧制的物品（如 raw_iron, raw_gold, cobblestone）
+            fuelName: 燃料名称（可选，默认自动选择）
+            count: 烧制数量（默认1）
+            
+        Returns:
+            烧制结果
+        """
+        params = {"itemName": itemName, "count": count}
+        if fuelName:
+            params["fuelName"] = fuelName
+        result = await bot_client.execute_action("smelt", params)
+        self.results.append({"action": "smelt", "result": result})
+        return result
+    
+    async def openContainer(self, x: int, y: int, z: int) -> Dict[str, Any]:
+        """
+        打开容器（箱子、桶等）
+        
+        Args:
+            x, y, z: 容器坐标
+            
+        Returns:
+            容器内容
+        """
+        result = await bot_client.execute_action("openContainer", {"x": x, "y": y, "z": z})
+        self.results.append({"action": "openContainer", "result": result})
+        return result
+    
+    async def closeContainer(self) -> Dict[str, Any]:
+        """关闭当前打开的容器"""
+        result = await bot_client.execute_action("closeContainer", {})
+        self.results.append({"action": "closeContainer", "result": result})
+        return result
+    
+    async def depositItem(self, itemName: str, count: int = None) -> Dict[str, Any]:
+        """
+        向当前打开的容器存入物品
+        
+        Args:
+            itemName: 物品名称
+            count: 存入数量（可选，默认全部）
+            
+        Returns:
+            存入结果
+        """
+        params = {"itemName": itemName}
+        if count is not None:
+            params["count"] = count
+        result = await bot_client.execute_action("depositItem", params)
+        self.results.append({"action": "depositItem", "result": result})
+        return result
+    
+    async def withdrawItem(self, itemName: str, count: int = None) -> Dict[str, Any]:
+        """
+        从当前打开的容器取出物品
+        
+        Args:
+            itemName: 物品名称
+            count: 取出数量（可选，默认全部）
+            
+        Returns:
+            取出结果
+        """
+        params = {"itemName": itemName}
+        if count is not None:
+            params["count"] = count
+        result = await bot_client.execute_action("withdrawItem", params)
+        self.results.append({"action": "withdrawItem", "result": result})
+        return result
+    
+    async def findCraftingTable(self, maxDistance: int = 32) -> Dict[str, Any]:
+        """
+        寻找附近的工作台
+        
+        Args:
+            maxDistance: 最大搜索距离（默认32）
+            
+        Returns:
+            工作台位置信息
+        """
+        result = await bot_client.execute_action("findCraftingTable", {"maxDistance": maxDistance})
+        self.results.append({"action": "findCraftingTable", "result": result})
+        return result
+    
+    async def findFurnace(self, maxDistance: int = 32) -> Dict[str, Any]:
+        """
+        寻找附近的熔炉
+        
+        Args:
+            maxDistance: 最大搜索距离（默认32）
+            
+        Returns:
+            熔炉位置信息
+        """
+        result = await bot_client.execute_action("findFurnace", {"maxDistance": maxDistance})
+        self.results.append({"action": "findFurnace", "result": result})
+        return result
+    
+    async def findChest(self, maxDistance: int = 32) -> Dict[str, Any]:
+        """
+        寻找附近的箱子或木桶
+        
+        Args:
+            maxDistance: 最大搜索距离（默认32）
+            
+        Returns:
+            容器位置信息
+        """
+        result = await bot_client.execute_action("findChest", {"maxDistance": maxDistance})
+        self.results.append({"action": "findChest", "result": result})
+        return result
+    
     async def getObservation(self) -> Dict[str, Any]:
         """获取当前观察状态"""
         return await bot_client.get_observation()
@@ -178,6 +350,165 @@ class BotAPI:
         """获取生命值和饥饿值"""
         observation = await bot_client.get_observation()
         return observation.get("health", {"health": 20, "food": 20})
+    
+    # ===== 技能库相关方法 =====
+    
+    def listSkills(self) -> List[Dict[str, Any]]:
+        """
+        列出所有可用技能
+        
+        Returns:
+            技能列表，每个包含 name, description, params
+        """
+        skills = skill_manager.list_skills()
+        self.log(f"已保存的技能: {[s['name'] for s in skills]}")
+        return skills
+    
+    def getSkill(self, name: str) -> Optional[Dict[str, Any]]:
+        """
+        获取技能详情
+        
+        Args:
+            name: 技能名称
+            
+        Returns:
+            技能信息，包含代码
+        """
+        skill = skill_manager.get_skill(name)
+        if skill:
+            self.log(f"获取技能: {name}")
+        else:
+            self.log(f"技能不存在: {name}")
+        return skill
+    
+    def saveSkill(self, name: str, description: str, code: str,
+                  params: List[str] = None) -> Dict[str, Any]:
+        """
+        保存新技能
+        
+        Args:
+            name: 技能名称
+            description: 技能描述
+            code: 技能代码（函数体，不含async def声明）
+            params: 参数列表（可选）
+            
+        Returns:
+            保存结果
+            
+        Example:
+            bot.saveSkill(
+                name="采集木头",
+                description="寻找并采集附近的木头",
+                code='''
+wood = await bot.findBlock("oak_log")
+if wood.get("found"):
+    await bot.goTo(wood["x"], wood["y"], wood["z"])
+    await bot.collectBlock("oak_log")
+    return "采集成功"
+return "没找到木头"
+''',
+                params=[]
+            )
+        """
+        result = skill_manager.save_skill(name, description, code, params or [])
+        if result.get("success"):
+            self.log(f"技能已保存: {name}")
+        else:
+            self.log(f"保存失败: {result.get('error')}")
+        return result
+    
+    def deleteSkill(self, name: str) -> Dict[str, Any]:
+        """
+        删除技能
+        
+        Args:
+            name: 技能名称
+            
+        Returns:
+            删除结果
+        """
+        result = skill_manager.delete_skill(name)
+        self.log(f"删除技能 {name}: {result}")
+        return result
+    
+    async def useSkill(self, name: str, **kwargs) -> Any:
+        """
+        调用已保存的技能
+        
+        Args:
+            name: 技能名称
+            **kwargs: 技能参数
+            
+        Returns:
+            技能执行结果
+            
+        Example:
+            result = await bot.useSkill("采集木头")
+        """
+        skill = skill_manager.get_skill(name)
+        if not skill:
+            error_msg = f"技能 '{name}' 不存在"
+            self.log(error_msg)
+            return {"success": False, "error": error_msg}
+        
+        self.log(f"执行技能: {name}")
+        
+        try:
+            # 获取技能代码
+            full_code = skill.get('full_code', '')
+            
+            # 动态执行技能代码
+            skill_globals = {
+                '__builtins__': {
+                    'print': print,
+                    'len': len,
+                    'range': range,
+                    'str': str,
+                    'int': int,
+                    'float': float,
+                    'bool': bool,
+                    'list': list,
+                    'dict': dict,
+                    'tuple': tuple,
+                    'set': set,
+                    'abs': abs,
+                    'min': min,
+                    'max': max,
+                    'sum': sum,
+                    'round': round,
+                    'sorted': sorted,
+                    'enumerate': enumerate,
+                    'zip': zip,
+                    'map': map,
+                    'filter': filter,
+                    'isinstance': isinstance,
+                    'True': True,
+                    'False': False,
+                    'None': None,
+                },
+                'asyncio': asyncio,
+            }
+            
+            skill_locals = {}
+            exec(compile(full_code, f'<skill:{name}>', 'exec'), skill_globals, skill_locals)
+            
+            # 找到技能函数
+            func_name = skill_manager._safe_func_name(name)
+            if func_name not in skill_locals:
+                return {"success": False, "error": f"技能函数 {func_name} 未定义"}
+            
+            skill_func = skill_locals[func_name]
+            
+            # 执行技能
+            result = await skill_func(self, **kwargs)
+            
+            self.results.append({"action": f"skill:{name}", "result": result})
+            return result
+            
+        except Exception as e:
+            error_msg = f"技能执行失败: {str(e)}"
+            self.log(error_msg)
+            return {"success": False, "error": error_msg, "traceback": traceback.format_exc()}
 
 
 class ScriptExecutor:

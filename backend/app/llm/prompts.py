@@ -23,77 +23,79 @@ BOT_PERSONA = {
     "greeting": "喵~小面包来玩MC啦！(๑>◡<๑)",
 }
 
+# ============================================================
+# 🎯 原子动作列表 - 只包含基础动作，复杂操作使用 executeScript
+# ============================================================
+
 AVAILABLE_ACTIONS = [
+    # === 交互类 ===
     {
         "name": "chat",
-        "description": "Send a chat message to the server",
-        "parameters": {"message": "string - The message to send"}
+        "description": "发送聊天消息",
+        "parameters": {"message": "string - 要发送的消息"}
     },
     {
+        "name": "wait",
+        "description": "等待指定时间",
+        "parameters": {"seconds": "number - 等待秒数"}
+    },
+    
+    # === 移动类 ===
+    {
         "name": "goTo",
-        "description": "Walk to a specific coordinate",
+        "description": "移动到指定坐标",
         "parameters": {"x": "number", "y": "number", "z": "number"}
     },
     {
-        "name": "followPlayer",
-        "description": "Follow a specific player",
-        "parameters": {"playerName": "string - Name of the player to follow"}
-    },
-    {
         "name": "stopMoving",
-        "description": "Stop all movement",
+        "description": "停止移动",
         "parameters": {}
     },
     {
         "name": "jump",
-        "description": "Make the bot jump",
+        "description": "跳跃一次",
         "parameters": {}
     },
     {
         "name": "lookAt",
-        "description": "Look at a specific coordinate",
+        "description": "看向指定坐标",
         "parameters": {"x": "number", "y": "number", "z": "number"}
     },
     {
+        "name": "followPlayer",
+        "description": "跟随指定玩家（持续跟随，使用stopMoving停止）",
+        "parameters": {"playerName": "string - 玩家名称"}
+    },
+    
+    # === 动作类 ===
+    {
         "name": "attack",
-        "description": "Attack the nearest entity of specified type",
-        "parameters": {"entityType": "string - Type of entity to attack"}
+        "description": "攻击最近的指定类型实体（单次攻击）",
+        "parameters": {"entityType": "string - 实体类型 (如 zombie, skeleton, pig)"}
     },
     {
         "name": "collectBlock",
-        "description": "Mine and collect a specific type of block nearby",
-        "parameters": {"blockType": "string - Type of block to collect"}
-    },
-    {
-        "name": "wait",
-        "description": "Wait for a specified duration",
-        "parameters": {"seconds": "number - Duration to wait in seconds"}
-    },
-    {
-        "name": "viewInventory",
-        "description": "查看物品栏/背包中的所有物品，返回物品列表",
-        "parameters": {}
-    },
-    {
-        "name": "equipItem",
-        "description": "装备物品到手上（手持）",
-        "parameters": {"itemName": "string - 物品名称 (如 diamond_sword, diamond_pickaxe)"}
+        "description": "挖掘并收集最近的指定类型方块",
+        "parameters": {"blockType": "string - 方块类型 (如 oak_log, stone, diamond_ore)"}
     },
     {
         "name": "placeBlock",
         "description": "在指定位置放置方块",
         "parameters": {
-            "blockName": "string - 要放置的方块名称（必须在背包中）",
-            "x": "number - X坐标",
-            "y": "number - Y坐标",
-            "z": "number - Z坐标"
+            "blockName": "string - 方块名称",
+            "x": "number", "y": "number", "z": "number"
         }
     },
     {
+        "name": "equipItem",
+        "description": "装备物品到手上",
+        "parameters": {"itemName": "string - 物品名称 (如 diamond_sword)"}
+    },
+    {
         "name": "dropItem",
-        "description": "丢弃/扔出物品",
+        "description": "丢弃物品",
         "parameters": {
-            "itemName": "string - 要丢弃的物品名称",
+            "itemName": "string - 物品名称",
             "count": "number - 可选：丢弃数量（默认全部）"
         }
     },
@@ -101,137 +103,116 @@ AVAILABLE_ACTIONS = [
         "name": "eat",
         "description": "吃东西恢复饥饿值",
         "parameters": {
-            "foodName": "string - 可选：指定要吃的食物名称（不指定则自动选择任意食物）"
+            "foodName": "string - 可选：指定食物名称（不指定则自动选择）"
         }
     },
     {
-        "name": "scanBlocks",
-        "description": "扫描并统计周围指定类型的方块数量和位置",
-        "parameters": {
-            "blockTypes": "array - 要搜索的方块名称列表 (如 ['diamond_ore', 'iron_ore'])",
-            "range": "number - 搜索半径 (默认16, 最大32)"
-        }
+        "name": "useItem",
+        "description": "使用当前手持物品（如使用弓箭、喝药水、使用末影珍珠等）",
+        "parameters": {}
     },
     {
-        "name": "findBlock",
-        "description": "寻找最近的指定类型方块并返回其位置",
-        "parameters": {
-            "blockType": "string - 方块名称 (如 diamond_ore, water, oak_log)",
-            "maxDistance": "number - 最大搜索距离 (默认32)"
-        }
-    },
-    {
-        "name": "getBlockAt",
-        "description": "获取指定坐标处的方块信息",
+        "name": "activateBlock",
+        "description": "右键激活/交互方块（如打开门、按按钮、拉拉杆、使用床等）",
         "parameters": {
             "x": "number - X坐标",
             "y": "number - Y坐标",
             "z": "number - Z坐标"
+        }
+    },
+    
+    # === 感知类 ===
+    {
+        "name": "viewInventory",
+        "description": "查看背包物品",
+        "parameters": {}
+    },
+    {
+        "name": "findBlock",
+        "description": "寻找最近的指定方块",
+        "parameters": {
+            "blockType": "string - 方块名称",
+            "maxDistance": "number - 最大距离（默认32）"
         }
     },
     {
         "name": "scanEntities",
-        "description": "扫描周围所有实体并返回详细信息",
+        "description": "扫描周围实体",
         "parameters": {
-            "range": "number - 搜索半径 (默认16)",
-            "entityType": "string - 可选：按类型过滤 (如 player, zombie, cow)"
+            "range": "number - 范围（默认16）",
+            "entityType": "string - 可选：过滤类型"
         }
     },
-    {
-        "name": "canReach",
-        "description": "检查某个坐标是否可以通过寻路到达（不实际移动）",
-        "parameters": {
-            "x": "number - X坐标",
-            "y": "number - Y坐标",
-            "z": "number - Z坐标"
-        }
-    },
-    {
-        "name": "getPathTo",
-        "description": "计算并返回到某个坐标的路径（不实际移动）",
-        "parameters": {
-            "x": "number - X坐标",
-            "y": "number - Y坐标",
-            "z": "number - Z坐标"
-        }
-    },
+    
+    # === 脚本执行（用于复杂任务）===
     {
         "name": "executeScript",
-        "description": """执行Python脚本来完成复杂的多步骤任务。
-        
-脚本必须定义一个 async def main(bot) 函数，bot对象提供以下方法：
+        "description": """执行Python脚本完成复杂任务。使用此动作可以调用已保存的技能库或编写自定义逻辑。
 
-**移动类：**
-- await bot.goTo(x, y, z) - 走到指定坐标
-- await bot.followPlayer(name) - 跟随玩家
-- await bot.stopMoving() - 停止移动
-- await bot.jump() - 跳跃
-- await bot.lookAt(x, y, z) - 看向坐标
-
-**物品类：**
-- await bot.viewInventory() - 返回 {"success":true, "inventory":[{"name":"bread","count":5},...]}
-- await bot.equipItem(itemName) - 装备物品
-- await bot.placeBlock(blockName, x, y, z) - 放置方块
-- await bot.dropItem(itemName, count) - 丢弃物品
-- await bot.eat(foodName) - 吃食物，不指定则自动选择
-
-**环境感知：**
-- await bot.findBlock(blockType, maxDistance) - 返回 {"success":true, "found":true, "position":{"x":0,"y":0,"z":0}, "blockName":"oak_log"}
-- await bot.scanBlocks(blockTypes, range) - 扫描多种方块
-- await bot.getBlockAt(x, y, z) - 获取方块信息
-- await bot.scanEntities(range, entityType) - 扫描实体
-- await bot.canReach(x, y, z) - 返回 {"success":true, "reachable":true/false, "pathLength":10}
-- await bot.getPathTo(x, y, z) - 返回 {"success":true, "found":true, "path":[...], "keyPoints":[...]}
-
-**状态获取：**
-- await bot.getPosition() - 返回 {"x":0, "y":0, "z":0}
-- await bot.getHealth() - 返回 {"health":20, "food":20}
-
-**互动类：**
-- await bot.chat(message) - 发送聊天消息
-- await bot.attack(entityType) - 攻击实体
-- await bot.collectBlock(blockType) - 收集/挖掘方块
-- await bot.wait(seconds) - 等待
-
-示例1 - 采集3个木头（先检查可达性）：
+脚本格式：
 ```python
 async def main(bot):
-    for i in range(3):
-        result = await bot.findBlock("oak_log", 32)
-        if result.get("found") and result.get("position"):
-            pos = result["position"]
-            # 先检查是否可达
-            check = await bot.canReach(pos["x"], pos["y"], pos["z"])
-            if check.get("reachable"):
-                await bot.goTo(pos["x"], pos["y"], pos["z"])
-                await bot.collectBlock("oak_log")
-                await bot.chat(f"采集了第{i+1}个木头喵~")
-            else:
-                await bot.chat("那边去不了喵...")
-        else:
-            await bot.chat("找不到木头了喵...")
-            break
-    return "采集完成"
+    # 你的代码
+    return "结果"
 ```
 
-示例2 - 种植树苗：
+**基础API（与原子动作对应）：**
+- 移动: await bot.goTo(x,y,z) / bot.stopMoving() / bot.jump() / bot.lookAt(x,y,z) / bot.followPlayer(name)
+- 动作: await bot.attack(type) / bot.collectBlock(type) / bot.placeBlock(name,x,y,z)
+- 物品: await bot.equipItem(name) / bot.dropItem(name,count) / bot.eat(food) / bot.useItem()
+- 交互: await bot.activateBlock(x,y,z)
+- 感知: await bot.viewInventory() / bot.findBlock(type,dist) / bot.scanEntities(range,type)
+- 状态: await bot.getPosition() / bot.getHealth()
+- 其他: await bot.chat(msg) / bot.wait(sec) / bot.log(msg)
+
+**重要：API返回值格式**
+- `viewInventory()` 返回 `{"inventory": [{"name": "item_name", "count": 数量}, ...]}` - 遍历物品用 `result.get("inventory", [])`
+- `scanEntities(range, type)` 返回 `{"entities": [{"name": "...", "position": {"x":..,"y":..,"z":..}, "distance": ...}, ...]}` - 遍历用 `result.get("entities", [])`
+- `findBlock(type, dist)` 返回 `{"found": true/false, "position": {"x":..,"y":..,"z":..}, "distance": ...}`
+- `getPosition()` 返回 `{"x": ..., "y": ..., "z": ...}`
+- `getHealth()` 返回 `{"health": 数值, "food": 数值}`
+
+---
+
+## 🛠️ 技能库 - 复杂任务请优先使用技能！
+
+技能是预定义的复杂操作，比直接写脚本更可靠。调用方式：`await bot.useSkill("技能名", 参数=值)`
+
+| 技能名 | 描述 | 参数 | 示例 |
+|--------|------|------|------|
+| **采集木头** | 自动寻找并采集各种木头 | count=数量 | `await bot.useSkill("采集木头", count=10)` |
+| **打怪** | 自动寻找并击杀敌对生物 | count=数量, mob_type=类型 | `await bot.useSkill("打怪", count=5, mob_type="zombie")` |
+| **合成** | 合成物品（自动处理工作台） | itemName=物品名, count=数量 | `await bot.useSkill("合成", itemName="wooden_pickaxe", count=1)` |
+| **挖矿** | 自动寻找并采集矿石 | oreType=矿石类型, count=数量 | `await bot.useSkill("挖矿", oreType="iron_ore", count=5)` |
+| **钓鱼** | 自动钓鱼 | duration=秒数 | `await bot.useSkill("钓鱼", duration=120)` |
+| **拾取物品** | 自动拾取附近掉落的物品 | itemName=物品名(可选), maxDistance=范围, timeout=超时 | `await bot.useSkill("拾取物品", maxDistance=16)` |
+
+查看所有技能：`bot.listSkills()`
+
+---
+
+**示例：生存开局**
 ```python
 async def main(bot):
-    # 找到草方块
-    result = await bot.findBlock("grass_block", 16)
-    if result.get("found"):
-        pos = result["position"]
-        # 走到草方块上方
-        await bot.goTo(pos["x"], pos["y"] + 1, pos["z"])
-        # 在草方块上方种树苗
-        await bot.placeBlock("oak_sapling", pos["x"], pos["y"] + 1, pos["z"])
-        await bot.chat("种好树苗啦喵~")
-    return "完成"
+    # 1. 采集木头
+    await bot.useSkill("采集木头", count=5)
+    
+    # 2. 合成基础工具
+    await bot.useSkill("合成", itemName="oak_planks", count=20)
+    await bot.useSkill("合成", itemName="crafting_table", count=1)
+    await bot.useSkill("合成", itemName="stick", count=8)
+    await bot.useSkill("合成", itemName="wooden_pickaxe", count=1)
+    
+    # 3. 挖矿获取资源
+    await bot.useSkill("挖矿", oreType="coal_ore", count=10)
+    await bot.useSkill("挖矿", oreType="iron_ore", count=5)
+    
+    return "生存开局完成！"
 ```""",
         "parameters": {
-            "script": "string - Python脚本代码（必须包含async def main(bot)函数）",
-            "description": "string - 脚本功能描述（用于日志）",
-            "timeout": "number - 必填：超时时间秒数（默认300秒/5分钟，复杂任务可设置更长如600）"
+            "script": "string - Python脚本代码",
+            "description": "string - 脚本描述",
+            "timeout": "number - 超时秒数（默认300）"
         }
     }
 ]
