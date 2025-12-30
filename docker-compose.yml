@@ -1,0 +1,66 @@
+services:
+  # Minecraft Bot Service (Node.js)
+  bot:
+    build:
+      context: ./bot
+      dockerfile: Dockerfile
+    container_name: llm-mc-bot
+    restart: unless-stopped
+    ports:
+      - "${BOT_SERVICE_PORT:-3001}:3001"
+      - "${VIEWER_PORT:-3007}:3007"
+    environment:
+      - MC_HOST=${MC_HOST:-host.docker.internal}
+      - MC_PORT=${MC_PORT:-25565}
+      - MC_USERNAME=${MC_USERNAME:-LLM_Bot}
+      - MC_VERSION=${MC_VERSION:-1.20.1}
+      - BOT_SERVICE_PORT=${BOT_SERVICE_PORT:-3001}
+      - VIEWER_ENABLED=${VIEWER_ENABLED:-false}
+      - VIEWER_PORT=${VIEWER_PORT:-3007}
+      - VIEWER_FIRST_PERSON=${VIEWER_FIRST_PERSON:-false}
+      - AUTO_CONNECT=${AUTO_CONNECT:-true}
+      - DEBUG=${DEBUG:-false}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3001/status', (r) => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"]
+      interval: 5s
+      timeout: 10s
+      retries: 5
+      start_period: 10s
+    networks:
+      - llm-mc-network
+
+  # Backend Service (Python/FastAPI)
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: llm-mc-backend
+    restart: unless-stopped
+    ports:
+      - "${BACKEND_PORT:-8000}:8000"
+    environment:
+      - LLM_API_KEY=${LLM_API_KEY}
+      - LLM_BASE_URL=${LLM_BASE_URL:-https://api.openai.com/v1}
+      - LLM_MODEL=${LLM_MODEL:-gpt-4}
+      - LLM_MAX_TOKENS=${LLM_MAX_TOKENS:-1024}
+      - LLM_TEMPERATURE=${LLM_TEMPERATURE:-0.7}
+      - MAX_HISTORY_LENGTH=${MAX_HISTORY_LENGTH:-20}
+      - MAX_CHAT_MESSAGES=${MAX_CHAT_MESSAGES:-10}
+      - MAX_EVENTS=${MAX_EVENTS:-10}
+      - USE_CONVERSATION_HISTORY=${USE_CONVERSATION_HISTORY:-false}
+      - BOT_SERVICE_URL=http://bot:3001
+      - BOT_WS_URL=ws://bot:3001/ws
+      - AGENT_TICK_RATE=${AGENT_TICK_RATE:-2.0}
+      - AUTO_START_AGENT=${AUTO_START_AGENT:-true}
+      - DEBUG=${DEBUG:-false}
+    depends_on:
+      bot:
+        condition: service_healthy
+    networks:
+      - llm-mc-network
+
+networks:
+  llm-mc-network:
+    driver: bridge
