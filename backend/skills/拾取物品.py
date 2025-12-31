@@ -18,7 +18,7 @@ async def 拾取物品(bot, itemName=None, maxDistance=16, timeout=30):
     """
     import time
     
-    itemName = None if itemName == '*' else itemName
+    itemName = None if itemName in ["*", "all", "other"] else itemName
     bot.log(f"开始拾取物品，范围: {maxDistance}格" + (f"，目标: {itemName}" if itemName else ""))
     await bot.chat("开始捡东西喵~" + (f" 找{itemName}" if itemName else ""))
     

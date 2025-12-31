@@ -187,7 +187,7 @@ class Agent:
             })
             
             # print(f"[Agent] System Prompt: {system_prompt}")
-            print(f"[Agent] User Message: {user_message}")
+            # print(f"[Agent] User Message: {user_message}")
 
             response = await llm_client.chat_json(system_prompt, user_message)
             
@@ -376,7 +376,7 @@ class Agent:
                     "success": True,
                     "message": message,
                     "logs": result.get("logs", []),
-                    "actions": actions,
+                    "actions": actions_text,
                     "action_count": action_count,
                     "execution_time": result.get("execution_time", 0)
                 }

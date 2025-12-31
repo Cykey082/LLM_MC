@@ -3,7 +3,7 @@
 描述: 自动寻找并采集指定类型的矿石，支持自动挖开挡路的方块
 """
 
-async def 挖矿(bot, oreType="iron_ore", count=5):
+async def 挖矿(bot, oreType="stone", count=5):
     """
     自动寻找并采集指定矿石，会自动挖开挡路的方块
     
@@ -16,6 +16,7 @@ async def 挖矿(bot, oreType="iron_ore", count=5):
     Args:
         bot: BotAPI实例
         oreType: 矿石类型（默认iron_ore），支持:
+                 - stone (石头)
                  - coal_ore (煤矿)
                  - iron_ore (铁矿)
                  - copper_ore (铜矿)
@@ -30,31 +31,90 @@ async def 挖矿(bot, oreType="iron_ore", count=5):
         采集结果
     """
     
-    # 内嵌辅助函数：装备最好的镐子
-    async def equip_best_pickaxe():
-        """装备最好的镐子"""
+    # 矿石所需的最小挖掘等级（0: wooden, 1: stone, 2: iron, 3: diamond, 4: netherite）
+    ore_required_tier = {
+        "stone": 0,
+        "coal_ore": 0,
+        "iron_ore": 1,
+        "copper_ore": 1,
+        "gold_ore": 2,
+        "diamond_ore": 2,
+        "emerald_ore": 2,
+        "lapis_ore": 1,
+        "redstone_ore": 2,
+    }
+
+    # 物品名 -> 挖掘等级
+    pickaxe_tier = {
+        "wooden_pickaxe": 0,
+        "stone_pickaxe": 1,
+        "iron_pickaxe": 2,
+        "diamond_pickaxe": 3,
+        "netherite_pickaxe": 4,
+        # 金镐在部分情况下与石镐同级，但通常耐久低，归入1
+        "golden_pickaxe": 1,
+    }
+
+    # 内嵌辅助函数：装备最好的镐子，传入最小等级要求
+    async def equip_best_pickaxe(min_tier=0):
+        """装备背包中满足最小等级的最佳镐子；若没有则尝试合成获取并装备"""
         pickaxe_priority = [
             "netherite_pickaxe",
             "diamond_pickaxe",
             "iron_pickaxe",
-            "golden_pickaxe",
             "stone_pickaxe",
+            "golden_pickaxe",
             "wooden_pickaxe",
         ]
-        
+
         inventory = await bot.viewInventory()
         items = inventory.get("inventory", [])
-        
+
+        # 先查找已有且满足等级要求的镐子，从最好到最差
         for pickaxe in pickaxe_priority:
+            tier = pickaxe_tier.get(pickaxe, 0)
+            if tier < min_tier:
+                continue
             for item in items:
                 if item.get("name") == pickaxe:
                     result = await bot.equipItem(pickaxe)
                     if result.get("success"):
                         bot.log(f"装备了 {pickaxe}")
                         return pickaxe
-        
-        bot.log("没有找到镐子，使用空手")
+
+        # 如果没有满足等级的镐子，尝试使用技能合成一个最低满足等级的镐子
+        # 从最低能够满足 min_tier 的镐子开始尝试合成（优先成本低的）
+        craft_candidates = [
+            name for name, tier in pickaxe_tier.items() if tier >= min_tier
+        ]
+        # 排序为从低到高等级（先尝试最便宜的可行方案）
+        craft_candidates = sorted(craft_candidates, key=lambda n: pickaxe_tier.get(n, 0))
+
+        for candidate in craft_candidates:
+            bot.log(f"尝试合成 {candidate} 以满足挖掘等级 {min_tier}")
+            # 使用统一的技能接口调用合成
+            try:
+                craft_result = await bot.useSkill("合成", itemName=candidate, count=1)
+            except Exception as e:
+                bot.log(f"调用合成技能失败: {e}")
+                craft_result = {"success": False, "message": str(e)}
+
+            if craft_result.get("success"):
+                # 刷新背包并装备
+                inventory = await bot.viewInventory()
+                items = inventory.get("inventory", [])
+                for item in items:
+                    if item.get("name") == candidate:
+                        res = await bot.equipItem(candidate)
+                        if res.get("success"):
+                            bot.log(f"合成并装备了 {candidate}")
+                            return candidate
+
+        bot.log("没有找到满足要求的镐子，使用空手")
         return None
+    
+    # 根据目标矿石确定所需的最小镐子等级
+    min_tier = ore_required_tier.get(oreType, 0)
     
     # 内嵌辅助函数：获取当前位置
     async def get_bot_position():
@@ -243,7 +303,7 @@ async def 挖矿(bot, oreType="iron_ore", count=5):
             # 挖掘找到的方块
             for block_info in blocks_to_dig[:3]:  # 最多挖3个
                 bot.log(f"挖掘挡路方块: {block_info['name']} 在 ({block_info['x']}, {block_info['y']}, {block_info['z']})")
-                await equip_best_pickaxe()
+                await equip_best_pickaxe(min_tier)
                 dig_result = await bot.collectBlock(block_info["name"])
                 await bot.wait(0.2)
             
@@ -253,6 +313,8 @@ async def 挖矿(bot, oreType="iron_ore", count=5):
     
     # 矿石对应的深层矿石名称
     ore_variants = {
+        "dirt": ["dirt", "coarse_dirt", "podzol","grass_block"],
+        "stone": ["stone", "cobblestone"],
         "coal_ore": ["coal_ore", "deepslate_coal_ore"],
         "iron_ore": ["iron_ore", "deepslate_iron_ore"],
         "copper_ore": ["copper_ore", "deepslate_copper_ore"],
@@ -272,8 +334,8 @@ async def 挖矿(bot, oreType="iron_ore", count=5):
     bot.log(f"开始挖矿: {oreType}，目标: {count} 个")
     await bot.chat(f"开始挖 {oreType} 喵~ 目标 {count} 个")
     
-    # 先装备镐子
-    current_pickaxe = await equip_best_pickaxe()
+    # 先装备镐子（确保满足目标矿石的最小挖掘等级）
+    current_pickaxe = await equip_best_pickaxe(min_tier)
     if not current_pickaxe:
         await bot.chat("没有镐子，无法挖矿喵...")
         return {
@@ -304,8 +366,8 @@ async def 挖矿(bot, oreType="iron_ore", count=5):
             bot.log("饥饿值低，尝试吃东西")
             await bot.eat()
         
-        # 装备最佳镐子
-        await equip_best_pickaxe()
+        # 装备最佳镐子（确保满足目标矿石的最小挖掘等级）
+        await equip_best_pickaxe(min_tier)
         
         # 获取当前位置
         current_pos = await get_bot_position()
@@ -409,8 +471,8 @@ async def 挖矿(bot, oreType="iron_ore", count=5):
                 reached = await dig_to_target(pos, max_attempts=20)
                 
                 if reached:
-                    # 再次尝试采集
-                    await equip_best_pickaxe()
+                    # 再次尝试采集（确保装备合适的镐子）
+                    await equip_best_pickaxe(min_tier)
                     collect_result2 = await bot.collectBlock(ore_name)
                     
                     if collect_result2.get("success"):

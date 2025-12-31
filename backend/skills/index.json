@@ -23,12 +23,6 @@
     "params": ["oreType", "count"],
     "file": "挖矿.py"
   },
-  "钓鱼": {
-    "name": "钓鱼",
-    "description": "自动钓鱼一段时间",
-    "params": ["duration"],
-    "file": "钓鱼.py"
-  },
   "拾取物品": {
     "name": "拾取物品",
     "description": "自动拾取附近掉落的物品",
