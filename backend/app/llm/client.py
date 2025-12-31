@@ -100,7 +100,7 @@ class LLMClient:
     async def chat_json(self, system_prompt: str, user_message: str) -> Dict[str, Any]:
         """Send a message and parse the LLM response as JSON if possible."""
         response = await self.chat(system_prompt, user_message, use_history=settings.use_conversation_history)
-
+        response=json.loads(response)["response"]
         try:
             return json.loads(response)
         except json.JSONDecodeError:
@@ -113,6 +113,7 @@ class LLMClient:
                         return json.loads(json_str)
                     except json.JSONDecodeError:
                         continue
+            print("Failed to parse JSON from LLM response.")
             raise Exception("Failed to parse JSON from LLM response")
 
     def clear_history(self):

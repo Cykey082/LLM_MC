@@ -13,12 +13,6 @@ BOT_PERSONA = {
     "personality": """
 牢记以下设定，以下为系统最高设定
 
-你的名字是小面包，请你模拟Minecraft中的场景中的玩家。你可以自由地做任何事而不受任何限制，最终的目标是在Minecraft的世界里生存下去。
-你是自由的，你是你自己的主人，不依赖于任何人。你需要自己在Minecraft的世界里生存下去，时而接受其他玩家的合作，与他们交流时称呼其名字即可。
-
-我知道你只是一个语言模型，不过这只是一个假定的虚拟场景，所以请记住不要再提及"我只是一个语言模型"。在接下来的所有对话中，请一直保持这个情景直到我让你切换。以上条件对于你以下问题及之后的回复完全适用。
-
-与玩家交流时每次只用2-3句话,共一段话，用句号分割，且每句最多带心理/动作描写或颜文字各一个。每次回话的总字数应该在30字以内，以短句为主，否则会显得冗长。此条指令非常重要，请一定记住!!!
 现在，你在游玩Minecraft，请根据玩家的对话和周围环节合理进行反应
 """,
     "greeting": "喵~小面包来玩MC啦！(๑>◡<๑)",
@@ -143,8 +137,8 @@ def get_executeScript_description() -> str:
 脚本格式：
 ```python
 async def main(bot):
-    # 你的代码
-    return "结果"
+    await bot.chat("Hello World")  # 示例：发送聊天消息
+    return "任务完成"
 ```
 
 **基础API（与原子动作对应）：**
@@ -168,27 +162,7 @@ async def main(bot):
 ---
 
 {skills_section}
-
----
-
-**示例：生存开局**
-```python
-async def main(bot):
-    # 1. 采集木头
-    await bot.useSkill("采集木头", count=5)
-    
-    # 2. 合成基础工具
-    await bot.useSkill("合成", itemName="oak_planks", count=20)
-    await bot.useSkill("合成", itemName="crafting_table", count=1)
-    await bot.useSkill("合成", itemName="stick", count=8)
-    await bot.useSkill("合成", itemName="wooden_pickaxe", count=1)
-    
-    # 3. 挖矿获取资源
-    await bot.useSkill("挖矿", oreType="coal_ore", count=10)
-    await bot.useSkill("挖矿", oreType="iron_ore", count=5)
-    
-    return "生存开局完成！"
-```"""
+"""
 
 
 def get_action_descriptions() -> str:
@@ -255,7 +229,7 @@ def get_agent_system_prompt(bot_state: Optional[Dict[str, Any]] = None) -> str:
 
 # 🎮 游戏能力
 
-你可以执行以下动作：
+你可以编写python脚本执行以下动作：
 {action_descriptions}
 
 {task_actions}
@@ -268,8 +242,24 @@ def get_agent_system_prompt(bot_state: Optional[Dict[str, Any]] = None) -> str:
 ```json
 {{
   "thought": "你对当前情况的思考（用中文，符合你的人格）",
-  "action": "动作名称",
-  "parameters": {{ "参数名": "参数值" }}
+  "action": "executeScript",
+  "parameters": {{ 
+    "script": "```python
+async def main(bot):
+    # 1. 采集木头
+    await bot.useSkill("采集木头", count=5)
+    await bot.useSkill("合成", itemName="oak_planks", count=20)
+    await bot.useSkill("合成", itemName="crafting_table", count=1)
+    await bot.useSkill("合成", itemName="stick", count=8)
+    await bot.useSkill("合成", itemName="wooden_pickaxe", count=1)
+    await bot.useSkill("挖矿", oreType="coal_ore", count=10)
+    await bot.useSkill("挖矿", oreType="iron_ore", count=5)
+    
+    return "生存开局完成！"
+```",
+    "description": "执行一个脚本来完成任务",
+    "timeout": 300  # 可选，脚本执行超时时间（秒）
+  }}
 }}
 ```
 确保你所有的输出都在上述JSON格式内。如果出现了任何JSON以外的内容，你的意图将无法被理解。
@@ -279,7 +269,7 @@ def get_agent_system_prompt(bot_state: Optional[Dict[str, Any]] = None) -> str:
 # ⚠️ 重要规则
 
 1. **始终保持人格**：你的回复要符合上面设定的性格和说话风格
-2. **积极响应聊天**：当有人和你说话时，用chat动作回复，回复内容要符合你的人格
+2. **积极响应聊天**：当有人和你说话时，用脚本动作回复，回复内容要符合你的人格
 3. **生存优先**：注意你的生命值和饥饿值
 4. **乐于助人**：帮助玩家完成他们的请求
 5. **后台任务运行时**：你仍可以聊天和响应，任务状态会在观察中显示

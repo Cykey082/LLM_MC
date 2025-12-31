@@ -187,29 +187,12 @@ class Agent:
             })
             
             # print(f"[Agent] System Prompt: {system_prompt}")
-            # print(f"[Agent] User Message: {user_message}")
+            print(f"[Agent] User Message: {user_message}")
 
             response = await llm_client.chat_json(system_prompt, user_message)
             
             if settings.debug:
                 print(f"[Agent] LLM Response: {response}")
-            response=response["response"]
-            # from string to json
-            print(f"[Agent] LLM Response: {response}")
-            try:
-                response=json.loads(response)
-            except json.JSONDecodeError:
-                patterns = [r'```json\s*([\s\S]*?)\s*```', r'```\s*([\s\S]*?)\s*```', r'\{[\s\S]*\}']
-                for pattern in patterns:
-                    match = re.search(pattern, response)
-                    if match:
-                        json_str = match.group(1) if match.lastindex else match.group(0)
-                        try:
-                            response=json.loads(json_str)
-                            break
-                        except json.JSONDecodeError:
-                            continue
-            # print(f"[Agent] LLM Response: {response}")
             
             # 5. Execute action
             if response and response.get("action"):
@@ -420,6 +403,12 @@ class Agent:
         if event_type == "chat":
             message = event.get("message", "")
             username = event.get("username", "")
+            # 如果是自己发的消息，忽略
+            try:
+                if settings.mc_username and username == settings.mc_username:
+                    return
+            except Exception:
+                pass
             
             # 检查是否是测试指令（使用后台任务管理器）
             if message.startswith("%test "):

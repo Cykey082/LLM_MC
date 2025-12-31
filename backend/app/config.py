@@ -14,7 +14,7 @@ class Settings(BaseSettings):
     # LLM Configuration
     llm_api_key: str = ""
     llm_base_url: str = "http://localhost:11434"
-    llm_model: str = "gemma2:9b-instruct-q4_0"
+    llm_model: str = "littlebread"
     llm_max_tokens: int = 1024  # LLM响应最大token数
     llm_temperature: float = 0.8  # 创造性参数 (0-1)
     

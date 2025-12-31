@@ -1,10 +1,14 @@
-# LLM-MC 🤖⛏️
+# LLM-MC-Ollama 🤖⛏️
 
 基于 Mineflayer 的 LLM 驱动 Minecraft 机器人框架
+
+Forked from [https://github.com/advent259141/LLM_MC](https://github.com/advent259141/LLM_MC)
 
 ## 📖 概述
 
 LLM-MC 是一个让大语言模型（LLM）控制 Minecraft 机器人的框架。采用 Python FastAPI 后端 + Node.js Bot 服务的混合架构，机器人可以感知游戏环境、与玩家交互，并根据 LLM 的决策执行各种动作。
+
+本 Fork 使用本地部署的 [Ollama](https://ollama.com/) 作为 LLM ，对 LLM API 和提示词进行了一些修改。受本地硬件限制，效果可能不及原作，仅作为 LLM-MC 的本地方案提出。
 
 ## 🏗️ 架构
 
@@ -67,15 +71,14 @@ cp .env.example .env
 
 ```env
 # LLM API 配置
-LLM_API_KEY=your-api-key-here
-LLM_BASE_URL=https://api.deepseek.com/v1
-LLM_MODEL=deepseek-chat
+LLM_BASE_URL=http://localhost:11434
+LLM_MODEL=littlebread
 
 # Minecraft 服务器配置
 MC_HOST=localhost
 MC_PORT=25565
-MC_USERNAME=LLM_Bot
-MC_VERSION=1.20.1
+MC_USERNAME=littlebread
+MC_VERSION=1.21.1
 
 # 服务配置
 BOT_SERVICE_PORT=3001
@@ -92,8 +95,15 @@ npm install
 
 **后端服务 (Python):**
 ```bash
+python -m venv .venv
+source .venv/bin/activate
 cd backend
 pip install -r requirements.txt
+```
+
+**LLM (OLLAMA)**
+```bash
+ollama create littlebread -f Modelfile
 ```
 
 ### 3. 启动服务
@@ -116,14 +126,13 @@ docker-compose down
 终端 1 - Bot 服务：
 ```bash
 cd bot
-npm install
 npm start
 ```
 
 终端 2 - Python 后端：
 ```bash
+source .venv/bin/activate
 cd backend
-pip install -r requirements.txt
 python -m uvicorn app.main:app --reload --port 8000
 ```
 

@@ -4,6 +4,8 @@ Allows LLM to write and execute Python code to perform complex actions
 """
 import asyncio
 import traceback
+import re
+import textwrap
 from typing import Dict, Any, Optional, List
 from io import StringIO
 import sys
@@ -702,6 +704,7 @@ return "没找到木头"
             # 动态执行技能代码
             skill_globals = {
                 '__builtins__': {
+                    '__import__': __import__,
                     'print': print,
                     'len': len,
                     'range': range,
@@ -731,15 +734,17 @@ return "没找到木头"
                 'asyncio': asyncio,
             }
             
-            skill_locals = {}
-            exec(compile(full_code, f'<skill:{name}>', 'exec'), skill_globals, skill_locals)
-            
+            # 使用单一命名空间执行技能代码，确保模块级定义（helper 函数等）
+            # 可被技能函数正常访问
+            skill_namespace = skill_globals
+            exec(compile(full_code, f'<skill:{name}>', 'exec'), skill_namespace, skill_namespace)
+
             # 找到技能函数
             func_name = skill_manager._safe_func_name(name)
-            if func_name not in skill_locals:
+            if func_name not in skill_namespace:
                 return {"success": False, "error": f"技能函数 {func_name} 未定义"}
-            
-            skill_func = skill_locals[func_name]
+
+            skill_func = skill_namespace[func_name]
             
             # 执行技能
             result = await skill_func(self, **kwargs)
@@ -782,6 +787,40 @@ class ScriptExecutor:
         """
         bot_api = BotAPI()
         effective_timeout = timeout if timeout is not None else self.timeout
+        # Clean script input: remove Markdown fences (``` or ```python) and dedent
+        try:
+            if isinstance(script, str):
+                m = re.search(r'```(?:python)?\s*([\s\S]*?)\s*```', script, re.IGNORECASE)
+                if m:
+                    script = m.group(1)
+                script = textwrap.dedent(script).strip()
+                # 如果 LLM 生成的代码在 `async def main(bot):` 之后没有正确缩进，自动为后续未缩进行添加缩进
+                try:
+                    lines = script.splitlines()
+                    for idx, line in enumerate(lines):
+                        if re.match(r'^\s*async\s+def\s+main\s*\(\s*bot\s*\)\s*:\s*$', line):
+                            # 找到下一个非空行
+                            j = idx + 1
+                            while j < len(lines) and lines[j].strip() == "":
+                                j += 1
+                            # 如果下一非空行存在且没有缩进，则为该行及之后的未缩进行添加缩进，直到遇到新的顶层定义或结束
+                            if j < len(lines) and not re.match(r'^\s', lines[j]):
+                                k = j
+                                while k < len(lines):
+                                    # 遇到新的顶层定义（def/class/async def）则停止
+                                    if re.match(r'^\s*(async\s+def|def|class)\s+\w+', lines[k]):
+                                        break
+                                    if lines[k].strip() != "" and not re.match(r'^\s', lines[k]):
+                                        lines[k] = '    ' + lines[k]
+                                    k += 1
+                                script = '\n'.join(lines)
+                            break
+                except Exception:
+                    # 不要因缩进修复失败而阻塞执行，继续使用原始脚本
+                    pass
+        except Exception:
+            # If any issue during cleanup, proceed with original script
+            pass
         
         # 捕获stdout
         old_stdout = sys.stdout
